@@ -1,0 +1,504 @@
+#!/bin/bash
+# ==================================================
+# V2Ray Manager - SSH Management
+# قائمة متكاملة لإدارة SSH
+# ==================================================
+
+# الألوان
+R='\033[1;31m'
+G='\033[1;32m'
+Y='\033[1;33m'
+B='\033[1;34m'
+P='\033[1;35m'
+C='\033[1;36m'
+W='\033[1;37m'
+NC='\033[0m'
+
+if [[ $EUID -ne 0 ]]; then
+   echo -e "${R}❌ يجب تشغيل السكريبت بصلاحيات الروت${NC}"
+   exit 1
+fi
+
+# ==================================================
+# دوال مساعدة
+# ==================================================
+show_banner() {
+    clear
+    PORT=$(grep -E "^Port" /etc/ssh/sshd_config | awk '{print $2}' || echo "22")
+    USERS=$(who | wc -l)
+    ROOT=$(grep "^PermitRootLogin" /etc/ssh/sshd_config | awk '{print $2}')
+    
+    echo -e "${P}╔══════════════════════════════════════════════════════╗${NC}"
+    echo -e "${P}║     ${W}🔐 V2Ray Manager - إدارة SSH المتقدمة${P}               ║${NC}"
+    echo -e "${P}╠══════════════════════════════════════════════════════╣${NC}"
+    echo -e "${P}║${NC}  ${C}المنفذ:${NC} ${G}$PORT${NC}  |  ${C}المتصلون:${NC} ${Y}$USERS${NC}"
+    echo -e "${P}║${NC}  ${C}دخول الروت:${NC} $( [[ "$ROOT" == "yes" ]] && echo "${G}مفعل${NC}" || echo "${R}معطل${NC}")"
+    echo -e "${P}╚══════════════════════════════════════════════════════╝${NC}"
+    echo ""
+}
+
+press_enter() {
+    echo ""
+    read -p "اضغط Enter للعودة..."
+}
+
+show_success() {
+    echo -e "${G}✅ $1${NC}"
+}
+
+show_error() {
+    echo -e "${R}❌ $1${NC}"
+}
+
+show_warning() {
+    echo -e "${Y}⚠️ $1${NC}"
+}
+
+# ==================================================
+# إدارة خدمة SSH
+# ==================================================
+ssh_service_menu() {
+    while true; do
+        show_banner
+        echo -e "${P}╔════════════════════════════════════════════════╗${NC}"
+        echo -e "${P}║           📊 إدارة خدمة SSH                    ║${NC}"
+        echo -e "${P}╚════════════════════════════════════════════════╝${NC}"
+        echo ""
+        
+        echo -e "  ${G}[1]${NC} 📋 عرض حالة SSH"
+        echo -e "  ${G}[2]${NC} ▶️ تشغيل SSH"
+        echo -e "  ${G}[3]${NC} ⏹️ إيقاف SSH"
+        echo -e "  ${G}[4]${NC} 🔄 إعادة تشغيل SSH"
+        echo -e "  ${R}[0]${NC} 🔙 رجوع"
+        echo ""
+        read -p "$(echo -e ${Y}"اختر رقم الخيار: "${NC})" choice
+        
+        case $choice in
+            1)
+                echo ""
+                systemctl status sshd --no-pager -l 2>/dev/null || systemctl status ssh --no-pager -l
+                press_enter
+                ;;
+            2)
+                systemctl start sshd 2>/dev/null || systemctl start ssh
+                show_success "تم تشغيل SSH"
+                press_enter
+                ;;
+            3)
+                show_warning "إيقاف SSH سيمنع الاتصالات الجديدة"
+                read -p "هل أنت متأكد؟ (y/n): " confirm
+                if [[ "$confirm" == "y" ]]; then
+                    systemctl stop sshd 2>/dev/null || systemctl stop ssh
+                    show_success "تم إيقاف SSH"
+                fi
+                press_enter
+                ;;
+            4)
+                systemctl restart sshd 2>/dev/null || systemctl restart ssh
+                show_success "تم إعادة تشغيل SSH"
+                press_enter
+                ;;
+            0) break ;;
+            *) show_error "خيار غير صالح"; sleep 1 ;;
+        esac
+    done
+}
+
+# ==================================================
+# تغيير بورت SSH
+# ==================================================
+change_ssh_port() {
+    show_banner
+    echo -e "${P}╔════════════════════════════════════════════════╗${NC}"
+    echo -e "${P}║           🔑 تغيير بورت SSH                    ║${NC}"
+    echo -e "${P}╚════════════════════════════════════════════════╝${NC}"
+    echo ""
+    
+    CURRENT=$(grep -E "^Port" /etc/ssh/sshd_config | awk '{print $2}')
+    echo -e "${C}البورت الحالي:${NC} ${G}$CURRENT${NC}"
+    show_warning "تغيير البورت قد يقطع اتصالك الحالي"
+    echo ""
+    
+    read -p "أدخل البورت الجديد (1-65535): " NEW_PORT
+    
+    if [[ "$NEW_PORT" =~ ^[0-9]+$ ]] && [ "$NEW_PORT" -ge 1 ] && [ "$NEW_PORT" -le 65535 ]; then
+        # نسخ احتياطي
+        cp /etc/ssh/sshd_config /etc/ssh/sshd_config.backup.$(date +%Y%m%d)
+        
+        # تعديل البورت
+        if grep -q "^Port" /etc/ssh/sshd_config; then
+            sed -i "s/^Port [0-9]*/Port $NEW_PORT/" /etc/ssh/sshd_config
+        else
+            echo "Port $NEW_PORT" >> /etc/ssh/sshd_config
+        fi
+        
+        # فتح البورت في الفايروول
+        if command -v ufw &> /dev/null; then
+            ufw allow "$NEW_PORT/tcp" > /dev/null 2>&1
+            echo -e "${G}   ✅ تم فتح البورت $NEW_PORT في UFW${NC}"
+        fi
+        
+        # إعادة تشغيل SSH
+        systemctl restart sshd 2>/dev/null || systemctl restart ssh
+        show_success "تم تغيير البورت إلى $NEW_PORT"
+        show_warning "استخدم البورت الجديد في اتصالك القادم"
+    else
+        show_error "بورت غير صالح"
+    fi
+    
+    press_enter
+}
+
+# ==================================================
+# إدارة المستخدمين
+# ==================================================
+user_management() {
+    while true; do
+        show_banner
+        echo -e "${P}╔════════════════════════════════════════════════╗${NC}"
+        echo -e "${P}║           👤 إدارة المستخدمين                  ║${NC}"
+        echo -e "${P}╚════════════════════════════════════════════════╝${NC}"
+        echo ""
+        
+        echo -e "  ${G}[1]${NC} 📋 عرض جميع المستخدمين"
+        echo -e "  ${G}[2]${NC} 👥 عرض المستخدمين النشطين"
+        echo -e "  ${G}[3]${NC} ➕ إضافة مستخدم جديد"
+        echo -e "  ${G}[4]${NC} 🗑️ حذف مستخدم"
+        echo -e "  ${G}[5]${NC} 🔑 تغيير كلمة مرور"
+        echo -e "  ${G}[6]${NC} 🔒 حظر مستخدم"
+        echo -e "  ${G}[7]${NC} 🔓 فك حظر مستخدم"
+        echo -e "  ${R}[0]${NC} 🔙 رجوع"
+        echo ""
+        read -p "$(echo -e ${Y}"اختر رقم الخيار: "${NC})" choice
+        
+        case $choice in
+            1)
+                echo -e "\n${C}جميع المستخدمين:${NC}"
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                awk -F: '$3>=1000 {printf "👤 %-15s | UID: %-5s | Shell: %s\n", $1, $3, $7}' /etc/passwd | sort
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                TOTAL=$(awk -F: '$3>=1000' /etc/passwd | wc -l)
+                echo -e "الإجمالي: ${G}$TOTAL${NC}"
+                press_enter
+                ;;
+            2)
+                echo -e "\n${C}المستخدمين النشطين:${NC}"
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                if [ $(who | wc -l) -eq 0 ]; then
+                    echo "لا يوجد مستخدمين نشطين"
+                else
+                    who | awk '{printf "👤 %-10s | من %-15s | منذ %s %s\n", $1, $5, $3, $4}'
+                fi
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                ACTIVE=$(who | wc -l)
+                echo -e "المتصلين: ${G}$ACTIVE${NC}"
+                press_enter
+                ;;
+            3)
+                echo -e "\n${C}➕ إضافة مستخدم جديد${NC}"
+                read -p "اسم المستخدم: " username
+                
+                if id "$username" &>/dev/null; then
+                    show_error "المستخدم موجود مسبقاً"
+                else
+                    useradd -m -s /bin/bash "$username"
+                    passwd "$username"
+                    
+                    read -p "إضافة للمجموعة sudo؟ (y/n): " add_sudo
+                    if [[ "$add_sudo" == "y" ]]; then
+                        usermod -aG sudo "$username"
+                        echo -e "${G}✅ تمت الإضافة لمجموعة sudo${NC}"
+                    fi
+                    
+                    show_success "تم إضافة المستخدم $username"
+                fi
+                press_enter
+                ;;
+            4)
+                echo -e "\n${C}🗑️ حذف مستخدم${NC}"
+                read -p "اسم المستخدم: " username
+                
+                if ! id "$username" &>/dev/null; then
+                    show_error "المستخدم غير موجود"
+                elif [[ "$username" == "root" ]]; then
+                    show_error "لا يمكن حذف المستخدم root"
+                else
+                    read -p "هل أنت متأكد؟ (y/n): " confirm
+                    if [[ "$confirm" == "y" ]]; then
+                        pkill -u "$username" 2>/dev/null
+                        userdel -r "$username" 2>/dev/null
+                        show_success "تم حذف المستخدم $username"
+                    fi
+                fi
+                press_enter
+                ;;
+            5)
+                echo -e "\n${C}🔑 تغيير كلمة مرور${NC}"
+                read -p "اسم المستخدم: " username
+                if id "$username" &>/dev/null; then
+                    passwd "$username"
+                else
+                    show_error "المستخدم غير موجود"
+                fi
+                press_enter
+                ;;
+            6)
+                echo -e "\n${C}🔒 حظر مستخدم${NC}"
+                read -p "اسم المستخدم: " username
+                if id "$username" &>/dev/null; then
+                    passwd -l "$username"
+                    pkill -u "$username" 2>/dev/null
+                    show_success "تم حظر $username"
+                else
+                    show_error "المستخدم غير موجود"
+                fi
+                press_enter
+                ;;
+            7)
+                echo -e "\n${C}🔓 فك حظر مستخدم${NC}"
+                read -p "اسم المستخدم: " username
+                if id "$username" &>/dev/null; then
+                    passwd -u "$username"
+                    show_success "تم فك الحظر عن $username"
+                else
+                    show_error "المستخدم غير موجود"
+                fi
+                press_enter
+                ;;
+            0) break ;;
+            *) show_error "خيار غير صالح"; sleep 1 ;;
+        esac
+    done
+}
+
+# ==================================================
+# إدارة شعار SSH
+# ==================================================
+banner_menu() {
+    while true; do
+        show_banner
+        echo -e "${P}╔════════════════════════════════════════════════╗${NC}"
+        echo -e "${P}║           🎨 إدارة شعار SSH                    ║${NC}"
+        echo -e "${P}╚════════════════════════════════════════════════╝${NC}"
+        echo ""
+        
+        echo -e "  ${G}[1]${NC} 📋 عرض الشعار الحالي"
+        echo -e "  ${G}[2]${NC} ✏️ إنشاء/تعديل الشعار"
+        echo -e "  ${G}[3]${NC} 🗑️ إلغاء الشعار"
+        echo -e "  ${R}[0]${NC} 🔙 رجوع"
+        echo ""
+        read -p "$(echo -e ${Y}"اختر رقم الخيار: "${NC})" choice
+        
+        case $choice in
+            1)
+                if [ -f /etc/ssh/banner ]; then
+                    echo -e "\n${Y}الشعار الحالي:${NC}"
+                    cat /etc/ssh/banner
+                else
+                    show_warning "لا يوجد شعار"
+                fi
+                press_enter
+                ;;
+            2)
+                echo -e "${Y}أدخل النص الجديد (Ctrl+D للحفظ، Ctrl+C للإلغاء):${NC}"
+                cat > /etc/ssh/banner
+                
+                # تفعيل الشعار
+                if ! grep -q "^Banner" /etc/ssh/sshd_config; then
+                    echo "Banner /etc/ssh/banner" >> /etc/ssh/sshd_config
+                else
+                    sed -i 's|^Banner.*|Banner /etc/ssh/banner|' /etc/ssh/sshd_config
+                fi
+                
+                systemctl restart sshd 2>/dev/null || systemctl restart ssh
+                show_success "تم حفظ وتفعيل الشعار"
+                press_enter
+                ;;
+            3)
+                rm -f /etc/ssh/banner
+                sed -i '/^Banner/d' /etc/ssh/sshd_config
+                systemctl restart sshd 2>/dev/null || systemctl restart ssh
+                show_success "تم إلغاء الشعار"
+                press_enter
+                ;;
+            0) break ;;
+            *) show_error "خيار غير صالح"; sleep 1 ;;
+        esac
+    done
+}
+
+# ==================================================
+# إعدادات SSH المتقدمة
+# ==================================================
+advanced_settings() {
+    while true; do
+        show_banner
+        echo -e "${P}╔════════════════════════════════════════════════╗${NC}"
+        echo -e "${P}║           ⚙️ إعدادات SSH المتقدمة              ║${NC}"
+        echo -e "${P}╚════════════════════════════════════════════════╝${NC}"
+        echo ""
+        
+        echo -e "  ${G}[1]${NC} 🔐 تفعيل/تعطيل دخول الروت"
+        echo -e "  ${G}[2]${NC} 🔑 تفعيل/تعطيل المصادقة بكلمة مرور"
+        echo -e "  ${G}[3]${NC} ⏱️ تغيير مهلة تسجيل الدخول"
+        echo -e "  ${G}[4]${NC} 🔢 تغيير الحد الأقصى للمحاولات"
+        echo -e "  ${G}[5]${NC} 📝 عرض جميع الإعدادات"
+        echo -e "  ${R}[0]${NC} 🔙 رجوع"
+        echo ""
+        read -p "$(echo -e ${Y}"اختر رقم الخيار: "${NC})" choice
+        
+        case $choice in
+            1)
+                CURRENT=$(grep "^PermitRootLogin" /etc/ssh/sshd_config | awk '{print $2}')
+                if [[ "$CURRENT" == "yes" ]]; then
+                    sed -i 's/^PermitRootLogin yes/PermitRootLogin no/' /etc/ssh/sshd_config
+                    show_success "تم تعطيل دخول الروت"
+                else
+                    sed -i 's/^PermitRootLogin no/PermitRootLogin yes/' /etc/ssh/sshd_config
+                    show_success "تم تفعيل دخول الروت"
+                fi
+                systemctl restart sshd 2>/dev/null || systemctl restart ssh
+                press_enter
+                ;;
+            2)
+                CURRENT=$(grep "^PasswordAuthentication" /etc/ssh/sshd_config | awk '{print $2}')
+                if [[ "$CURRENT" == "yes" ]]; then
+                    sed -i 's/^PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config
+                    show_success "تم تعطيل المصادقة بكلمة مرور"
+                else
+                    sed -i 's/^PasswordAuthentication no/PasswordAuthentication yes/' /etc/ssh/sshd_config
+                    show_success "تم تفعيل المصادقة بكلمة مرور"
+                fi
+                systemctl restart sshd 2>/dev/null || systemctl restart ssh
+                press_enter
+                ;;
+            3)
+                read -p "أدخل المهلة بالثواني (60-600): " timeout
+                if [[ "$timeout" =~ ^[0-9]+$ ]] && [ "$timeout" -ge 60 ] && [ "$timeout" -le 600 ]; then
+                    sed -i "s/^#*LoginGraceTime .*/LoginGraceTime $timeout/" /etc/ssh/sshd_config
+                    systemctl restart sshd 2>/dev/null || systemctl restart ssh
+                    show_success "تم تغيير المهلة إلى $timeout ثانية"
+                else
+                    show_error "قيمة غير صالحة"
+                fi
+                press_enter
+                ;;
+            4)
+                read -p "أدخل الحد الأقصى للمحاولات (1-10): " attempts
+                if [[ "$attempts" =~ ^[0-9]+$ ]] && [ "$attempts" -ge 1 ] && [ "$attempts" -le 10 ]; then
+                    sed -i "s/^#*MaxAuthTries .*/MaxAuthTries $attempts/" /etc/ssh/sshd_config
+                    systemctl restart sshd 2>/dev/null || systemctl restart ssh
+                    show_success "تم تغيير الحد الأقصى إلى $attempts"
+                else
+                    show_error "قيمة غير صالحة"
+                fi
+                press_enter
+                ;;
+            5)
+                echo -e "\n${C}إعدادات SSH الحالية:${NC}"
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                grep -E "^(Port|PermitRootLogin|PasswordAuthentication|Banner|ClientAliveInterval|MaxAuthTries|LoginGraceTime)" /etc/ssh/sshd_config | grep -v "^#"
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                press_enter
+                ;;
+            0) break ;;
+            *) show_error "خيار غير صالح"; sleep 1 ;;
+        esac
+    done
+}
+
+# ==================================================
+# النسخ الاحتياطي
+# ==================================================
+backup_menu() {
+    show_banner
+    echo -e "${P}╔════════════════════════════════════════════════╗${NC}"
+    echo -e "${P}║           💾 النسخ الاحتياطي                   ║${NC}"
+    echo -e "${P}╚════════════════════════════════════════════════╝${NC}"
+    echo ""
+    
+    echo -e "  ${G}[1]${NC} إنشاء نسخة احتياطية"
+    echo -e "  ${G}[2]${NC} استعادة نسخة احتياطية"
+    echo -e "  ${R}[0]${NC} رجوع"
+    echo ""
+    read -p "$(echo -e ${Y}"اختر رقم الخيار: "${NC})" choice
+    
+    case $choice in
+        1)
+            BACKUP_DIR="/root/ssh-backup-$(date +%Y%m%d-%H%M%S)"
+            mkdir -p "$BACKUP_DIR"
+            
+            cp /etc/ssh/sshd_config "$BACKUP_DIR/"
+            [ -f /etc/ssh/banner ] && cp /etc/ssh/banner "$BACKUP_DIR/"
+            
+            tar -czf "$BACKUP_DIR.tar.gz" "$BACKUP_DIR" 2>/dev/null
+            rm -rf "$BACKUP_DIR"
+            
+            show_success "تم إنشاء النسخة: $BACKUP_DIR.tar.gz"
+            press_enter
+            ;;
+        2)
+            echo -e "\n${C}النسخ المتاحة:${NC}"
+            ls -lh /root/ssh-backup-*.tar.gz 2>/dev/null | awk '{print "  " $9}'
+            echo ""
+            read -p "أدخل اسم الملف: " file
+            
+            if [ -f "/root/$file" ]; then
+                TEMP_DIR="/tmp/ssh-restore-$$"
+                mkdir -p "$TEMP_DIR"
+                tar -xzf "/root/$file" -C "$TEMP_DIR"
+                
+                cp "$TEMP_DIR"/*/sshd_config /etc/ssh/sshd_config 2>/dev/null
+                cp "$TEMP_DIR"/*/banner /etc/ssh/banner 2>/dev/null
+                
+                rm -rf "$TEMP_DIR"
+                systemctl restart sshd 2>/dev/null || systemctl restart ssh
+                show_success "تمت الاستعادة"
+            else
+                show_error "الملف غير موجود"
+            fi
+            press_enter
+            ;;
+        0) return ;;
+    esac
+}
+
+# ==================================================
+# القائمة الرئيسية
+# ==================================================
+main_menu() {
+    while true; do
+        show_banner
+        echo -e "${P}╔════════════════════════════════════════════════╗${NC}"
+        echo -e "${P}║           📌 قائمة إدارة SSH                   ║${NC}"
+        echo -e "${P}╚════════════════════════════════════════════════╝${NC}"
+        echo ""
+        
+        echo -e "  ${G}[1]${NC} 📊 إدارة خدمة SSH"
+        echo -e "  ${G}[2]${NC} 🔑 تغيير بورت SSH"
+        echo -e "  ${G}[3]${NC} 👤 إدارة المستخدمين"
+        echo -e "  ${G}[4]${NC} 🎨 إدارة شعار SSH"
+        echo -e "  ${G}[5]${NC} ⚙️ إعدادات متقدمة"
+        echo -e "  ${G}[6]${NC} 💾 نسخ احتياطي"
+        echo -e "  ${R}[0]${NC} 🚪 خروج"
+        echo ""
+        read -p "$(echo -e ${Y}"اختر رقم الخيار: "${NC})" choice
+        
+        case $choice in
+            1) ssh_service_menu ;;
+            2) change_ssh_port ;;
+            3) user_management ;;
+            4) banner_menu ;;
+            5) advanced_settings ;;
+            6) backup_menu ;;
+            0)
+                echo -e "\n${G}مع السلامة! 👋${NC}"
+                exit 0
+                ;;
+            *) show_error "خيار غير صالح"; sleep 1 ;;
+        esac
+    done
+}
+
+# بدء البرنامج
+main_menu
