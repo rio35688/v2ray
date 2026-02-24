@@ -1,62 +1,69 @@
 # ==================================================
-# FIREWALLFALCON - SSH Configuration
-# معدل ومحسن لدعم V2Ray/X-UI
+# FIREWALLFALCON - SSH Configuration for Termux
+# معدل ومحسن لدعم V2Ray/X-UI على Termux
 # ==================================================
 
 # الإعدادات الأساسية
-Port 22
+Port 8022
 Protocol 2
 KeyRegenerationInterval 3600
 ServerKeyBits 1024
 SyslogFacility AUTH
 LogLevel INFO
 
+# Host Keys (لـ Termux)
+HostKey /data/data/com.termux/files/usr/etc/ssh/ssh_host_ed25519_key
+HostKey /data/data/com.termux/files/usr/etc/ssh/ssh_host_rsa_key
+
 # إعدادات المصادقة
 LoginGraceTime 120
 PermitRootLogin yes
 StrictModes yes
-RSAAuthentication yes
 PubkeyAuthentication yes
+PasswordAuthentication yes
+PermitEmptyPasswords no
+ChallengeResponseAuthentication no
+
+# إعدادات المصادقة القديمة (للتوافق)
+RSAAuthentication yes
 IgnoreRhosts yes
 RhostsRSAAuthentication no
 HostbasedAuthentication no
-PermitEmptyPasswords no
+
+# إعدادات البقاء متصلاً (مهم للـ VPN)
+ClientAliveInterval 60
+ClientAliveCountMax 3
+TCPKeepAlive yes
+
+# إعدادات الجلسات والاتصالات
+MaxAuthTries 3
+MaxSessions 10
+MaxStartups 10:30:60
 PermitTunnel yes
-ChallengeResponseAuthentication no
-PasswordAuthentication yes
+AllowTcpForwarding yes
+GatewayPorts yes
+
+# إعدادات الأداء
+UseDNS no
+Compression yes
 
 # إعدادات X11 والبيئة
 X11Forwarding yes
 X11DisplayOffset 10
 PrintMotd no
 PrintLastLog yes
-TCPKeepAlive yes
 
-# إعدادات البقاء متصلاً (مهم للـ VPN)
-ClientAliveInterval 60
-ClientAliveCountMax 3
-
-# إعدادات إضافية محسنة
-MaxAuthTries 3
-MaxSessions 10
-MaxStartups 10:30:60
-UseDNS no
-Compression yes
-AllowTcpForwarding yes
-GatewayPorts yes
-PermitTunnel yes
-
-# البيئة
+# البيئة والمسارات
 AcceptEnv LANG LC_*
-Subsystem sftp /usr/lib/openssh/sftp-server
+Subsystem sftp /data/data/com.termux/files/usr/libexec/sftp-server
+
+# الشعار (اختياري - قم بإنشاء الملف إذا أردت)
+# Banner /etc/bannerssh
+
+# استخدام PAM (مهم لـ Termux)
 UsePAM yes
 
-# الشعار
-Banner /etc/bannerssh
-
 # ==================================================
-# ملاحظات:
-# - تمت إضافة ClientAliveInterval لمنع قطع الاتصال
-# - تم تفعيل AllowTcpForwarding و GatewayPorts للـ VPN
-# - تم تعطيل UseDNS لتسريع الاتصال
+# نهاية ملف الإعدادات
+# تم التعديل والدمج لدعم V2Ray/X-UI على Termux
 # ==================================================
