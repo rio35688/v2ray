@@ -1,0 +1,295 @@
+#!/bin/bash
+# ==================================================
+# V3Ray Manager - SSH Management Only
+# ==================================================
+
+C_RESET=$'\033[0m'
+C_BOLD=$'\033[1m'
+C_RED=$'\033[38;5;196m'
+C_GREEN=$'\033[38;5;46m'
+C_YELLOW=$'\033[38;5;226m'
+C_BLUE=$'\033[38;5;39m'
+C_PURPLE=$'\033[38;5;135m'
+C_CYAN=$'\033[38;5;51m'
+
+if [[ $EUID -ne 0 ]]; then
+   echo -e "${C_RED}❌ هذا السكريبت يحتاج صلاحيات الروت${C_RESET}"
+   exit 1
+fi
+
+# ==================================================
+# دوال SSH
+# ==================================================
+show_banner() {
+    clear
+    local users=$(who | wc -l)
+    local ip=$(curl -s ifconfig.me 2>/dev/null || echo "غير متوفر")
+    local port=$(grep -E "^Port" /etc/ssh/sshd_config | awk '{print $2}' || echo "22")
+    
+    echo -e "${C_PURPLE}╔══════════════════════════════════════════════════╗${C_RESET}"
+    echo -e "${C_PURPLE}║     ${C_BOLD}🔌 V3Ray Manager - SSH Management${C_RESET}${C_PURPLE}              ║${C_RESET}"
+    echo -e "${C_PURPLE}╠══════════════════════════════════════════════════╣${C_RESET}"
+    echo -e "${C_PURPLE}║${C_RESET}  🖥️  IP: ${C_CYAN}$ip${C_RESET}  |  Port: ${C_GREEN}$port${C_RESET}"
+    echo -e "${C_PURPLE}║${C_RESET}  👥 المستخدمين النشطين: ${C_YELLOW}$users${C_RESET}"
+    echo -e "${C_PURPLE}╚══════════════════════════════════════════════════╝${C_RESET}"
+    echo ""
+}
+
+press_enter() {
+    echo ""
+    read -p "اضغط Enter للعودة..."
+}
+
+ssh_status() {
+    if systemctl is-active --quiet sshd 2>/dev/null || systemctl is-active --quiet ssh 2>/dev/null; then
+        echo -e "${C_GREEN}✅ شغال${C_RESET}"
+    else
+        echo -e "${C_RED}❌ موقف${C_RESET}"
+    fi
+}
+
+# ==================================================
+# قائمة SSH
+# ==================================================
+ssh_menu() {
+    while true; do
+        show_banner
+        echo -e "${C_BOLD}${C_PURPLE}📌 قائمة إدارة SSH${C_RESET}\n"
+        
+        local status=$(ssh_status)
+        echo -e "  حالة SSH: $status\n"
+        
+        echo -e "  ${C_GREEN}[1]${C_RESET} 📊 عرض حالة SSH (مفصل)"
+        echo -e "  ${C_GREEN}[2]${C_RESET} 🔄 إعادة تشغيل SSH"
+        echo -e "  ${C_GREEN}[3]${C_RESET} ⏹️ إيقاف SSH"
+        echo -e "  ${C_GREEN}[4]${C_RESET} ▶️ تشغيل SSH"
+        echo -e "  ${C_GREEN}[5]${C_RESET} 🔑 تغيير بورت SSH"
+        echo -e "  ${C_GREEN}[6]${C_RESET} 🚫 حظر مستخدم"
+        echo -e "  ${C_GREEN}[7]${C_RESET} 🔓 فك حظر مستخدم"
+        echo -e "  ${C_GREEN}[8]${C_RESET} 📋 عرض المستخدمين النشطين"
+        echo -e "  ${C_GREEN}[9]${C_RESET} 📋 عرض جميع المستخدمين"
+        echo -e "  ${C_GREEN}[10]${C_RESET} 👤 إضافة مستخدم جديد"
+        echo -e "  ${C_GREEN}[11]${C_RESET} 🗑️ حذف مستخدم"
+        echo -e "  ${C_GREEN}[12]${C_RESET} 🔑 تغيير كلمة مرور مستخدم"
+        echo -e "  ${C_GREEN}[13]${C_RESET} 🎨 إدارة شعار SSH (Banner)"
+        echo -e "  ${C_GREEN}[14]${C_RESET} 🔒 تفعيل/تعطيل دخول الروت"
+        echo -e "  ${C_GREEN}[15]${C_RESET} 📝 عرض إعدادات SSH"
+        echo -e "  ${C_RED}[0]${C_RESET} 🚪 خروج"
+        echo ""
+        read -p "اختر: " choice
+        
+        case $choice in
+            1)
+                echo -e "\n${C_BLUE}🔍 حالة خدمة SSH:${C_RESET}"
+                systemctl status sshd --no-pager -l 2>/dev/null || systemctl status ssh --no-pager -l
+                press_enter
+                ;;
+            2)
+                echo -e "\n${C_BLUE}🔄 إعادة تشغيل SSH...${C_RESET}"
+                systemctl restart sshd 2>/dev/null || systemctl restart ssh
+                echo -e "${C_GREEN}✅ تمت إعادة التشغيل${C_RESET}"
+                press_enter
+                ;;
+            3)
+                echo -e "\n${C_BLUE}⏹️ إيقاف SSH...${C_RESET}"
+                systemctl stop sshd 2>/dev/null || systemctl stop ssh
+                echo -e "${C_GREEN}✅ تم الإيقاف${C_RESET}"
+                press_enter
+                ;;
+            4)
+                echo -e "\n${C_BLUE}▶️ تشغيل SSH...${C_RESET}"
+                systemctl start sshd 2>/dev/null || systemctl start ssh
+                echo -e "${C_GREEN}✅ تم التشغيل${C_RESET}"
+                press_enter
+                ;;
+            5)
+                echo -e "\n${C_YELLOW}⚠️  تحذير: تغيير البورت قد يقطع اتصالك الحالي${C_RESET}"
+                current_port=$(grep -E "^Port" /etc/ssh/sshd_config | awk '{print $2}')
+                echo -e "البورت الحالي: ${C_CYAN}$current_port${C_RESET}"
+                read -p "أدخل رقم البورت الجديد: " new_port
+                if [[ "$new_port" =~ ^[0-9]+$ ]] && [ "$new_port" -ge 1 ] && [ "$new_port" -le 65535 ]; then
+                    # نسخ احتياطي
+                    cp /etc/ssh/sshd_config /etc/ssh/sshd_config.backup.$(date +%Y%m%d)
+                    
+                    # تعديل البورت
+                    if grep -q "^Port" /etc/ssh/sshd_config; then
+                        sed -i "s/^Port [0-9]*/Port $new_port/" /etc/ssh/sshd_config
+                    else
+                        echo "Port $new_port" >> /etc/ssh/sshd_config
+                    fi
+                    
+                    # فتح البورت في الفايروول
+                    if command -v ufw &> /dev/null; then
+                        ufw allow $new_port/tcp > /dev/null 2>&1
+                        echo -e "${C_GREEN}✅ تم فتح البورت $new_port في UFW${C_RESET}"
+                    fi
+                    
+                    # إعادة تشغيل SSH
+                    systemctl restart sshd 2>/dev/null || systemctl restart ssh
+                    echo -e "${C_GREEN}✅ تم تغيير البورت إلى $new_port${C_RESET}"
+                    echo -e "${C_YELLOW}⚠️  استخدم البورت الجديد في اتصالك القادم${C_RESET}"
+                else
+                    echo -e "${C_RED}❌ بورت غير صالح${C_RESET}"
+                fi
+                press_enter
+                ;;
+            6)
+                echo -e "\n${C_BLUE}🚫 حظر مستخدم${C_RESET}"
+                read -p "اسم المستخدم: " username
+                if id "$username" &>/dev/null; then
+                    passwd -l "$username"
+                    pkill -u "$username" 2>/dev/null
+                    echo -e "${C_GREEN}✅ تم حظر $username وإنهاء جلساته${C_RESET}"
+                else
+                    echo -e "${C_RED}❌ المستخدم غير موجود${C_RESET}"
+                fi
+                press_enter
+                ;;
+            7)
+                echo -e "\n${C_BLUE}🔓 فك حظر مستخدم${C_RESET}"
+                read -p "اسم المستخدم: " username
+                if id "$username" &>/dev/null; then
+                    passwd -u "$username"
+                    echo -e "${C_GREEN}✅ تم فك الحظر عن $username${C_RESET}"
+                else
+                    echo -e "${C_RED}❌ المستخدم غير موجود${C_RESET}"
+                fi
+                press_enter
+                ;;
+            8)
+                echo -e "\n${C_BLUE}📋 المستخدمين النشطين حالياً:${C_RESET}"
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                if [ $(who | wc -l) -eq 0 ]; then
+                    echo "لا يوجد مستخدمين نشطين"
+                else
+                    who | awk '{printf "👤 %-10s | من %-15s | منذ %s %s\n", $1, $5, $3, $4}'
+                fi
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                echo -e "إجمالي المتصلين: ${C_GREEN}$(who | wc -l)${C_RESET}"
+                press_enter
+                ;;
+            9)
+                echo -e "\n${C_BLUE}📋 جميع المستخدمين في النظام:${C_RESET}"
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                awk -F: '$3>=1000 {print "👤 " $1}' /etc/passwd | sort
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                echo -e "إجمالي المستخدمين: ${C_GREEN}$(awk -F: '$3>=1000' /etc/passwd | wc -l)${C_RESET}"
+                press_enter
+                ;;
+            10)
+                echo -e "\n${C_BLUE}👤 إضافة مستخدم جديد${C_RESET}"
+                read -p "اسم المستخدم: " username
+                if id "$username" &>/dev/null; then
+                    echo -e "${C_RED}❌ المستخدم موجود مسبقاً${C_RESET}"
+                else
+                    useradd -m -s /bin/bash "$username"
+                    passwd "$username"
+                    echo -e "${C_GREEN}✅ تم إضافة المستخدم $username${C_RESET}"
+                fi
+                press_enter
+                ;;
+            11)
+                echo -e "\n${C_BLUE}🗑️ حذف مستخدم${C_RESET}"
+                read -p "اسم المستخدم: " username
+                if id "$username" &>/dev/null; then
+                    read -p "هل أنت متأكد؟ (y/n): " confirm
+                    if [[ "$confirm" == "y" ]]; then
+                        userdel -r "$username"
+                        echo -e "${C_GREEN}✅ تم حذف المستخدم $username${C_RESET}"
+                    fi
+                else
+                    echo -e "${C_RED}❌ المستخدم غير موجود${C_RESET}"
+                fi
+                press_enter
+                ;;
+            12)
+                echo -e "\n${C_BLUE}🔑 تغيير كلمة مرور مستخدم${C_RESET}"
+                read -p "اسم المستخدم: " username
+                if id "$username" &>/dev/null; then
+                    passwd "$username"
+                else
+                    echo -e "${C_RED}❌ المستخدم غير موجود${C_RESET}"
+                fi
+                press_enter
+                ;;
+            13)
+                while true; do
+                    echo -e "\n${C_BLUE}🎨 إدارة شعار SSH${C_RESET}"
+                    echo "1) عرض الشعار الحالي"
+                    echo "2) إنشاء/تعديل الشعار"
+                    echo "3) إلغاء الشعار"
+                    echo "4) رجوع"
+                    read -p "اختر: " banner_choice
+                    
+                    case $banner_choice in
+                        1)
+                            if [ -f /etc/ssh/banner ]; then
+                                echo -e "\n${C_YELLOW}الشعار الحالي:${C_RESET}"
+                                cat /etc/ssh/banner
+                            else
+                                echo -e "${C_YELLOW}لا يوجد شعار حالياً${C_RESET}"
+                            fi
+                            ;;
+                        2)
+                            echo -e "${C_YELLOW}أدخل النص الجديد (Ctrl+D للحفظ، Ctrl+C للإلغاء):${C_RESET}"
+                            cat > /etc/ssh/banner
+                            # تفعيل الشعار في الإعدادات
+                            if ! grep -q "^Banner" /etc/ssh/sshd_config; then
+                                echo "Banner /etc/ssh/banner" >> /etc/ssh/sshd_config
+                            else
+                                sed -i 's|^Banner.*|Banner /etc/ssh/banner|' /etc/ssh/sshd_config
+                            fi
+                            systemctl restart sshd 2>/dev/null || systemctl restart ssh
+                            echo -e "${C_GREEN}✅ تم حفظ وتفعيل الشعار${C_RESET}"
+                            ;;
+                        3)
+                            rm -f /etc/ssh/banner
+                            sed -i '/^Banner/d' /etc/ssh/sshd_config
+                            systemctl restart sshd 2>/dev/null || systemctl restart ssh
+                            echo -e "${C_GREEN}✅ تم إلغاء الشعار${C_RESET}"
+                            ;;
+                        4) break ;;
+                    esac
+                done
+                ;;
+            14)
+                echo -e "\n${C_BLUE}🔒 إعدادات دخول الروت${C_RESET}"
+                if grep -q "^PermitRootLogin yes" /etc/ssh/sshd_config; then
+                    echo -e "الحالة الحالية: ${C_GREEN}مفعل${C_RESET}"
+                    read -p "هل تريد تعطيل دخول الروت؟ (y/n): " disable_root
+                    if [[ "$disable_root" == "y" ]]; then
+                        sed -i 's/^PermitRootLogin yes/PermitRootLogin no/' /etc/ssh/sshd_config
+                        systemctl restart sshd 2>/dev/null || systemctl restart ssh
+                        echo -e "${C_GREEN}✅ تم تعطيل دخول الروت${C_RESET}"
+                    fi
+                else
+                    echo -e "الحالة الحالية: ${C_RED}معطل${C_RESET}"
+                    read -p "هل تريد تفعيل دخول الروت؟ (y/n): " enable_root
+                    if [[ "$enable_root" == "y" ]]; then
+                        sed -i 's/^PermitRootLogin no/PermitRootLogin yes/' /etc/ssh/sshd_config
+                        systemctl restart sshd 2>/dev/null || systemctl restart ssh
+                        echo -e "${C_GREEN}✅ تم تفعيل دخول الروت${C_RESET}"
+                    fi
+                fi
+                press_enter
+                ;;
+            15)
+                echo -e "\n${C_BLUE}📝 إعدادات SSH الحالية:${C_RESET}"
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                grep -E "^(Port|PermitRootLogin|PasswordAuthentication|Banner|ClientAliveInterval|ClientAliveCountMax)" /etc/ssh/sshd_config | grep -v "^#" || echo "لا توجد إعدادات مخصصة"
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                press_enter
+                ;;
+            0)
+                echo -e "\n${C_GREEN}مع السلامة! 👋${C_RESET}"
+                exit 0
+                ;;
+            *) echo -e "${C_RED}❌ خيار غير صالح${C_RESET}"; sleep 1 ;;
+        esac
+    done
+}
+
+# ==================================================
+# بدء التشغيل
+# ==================================================
+ssh_menu
