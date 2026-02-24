@@ -1,17 +1,15 @@
 # ==================================================
 # FIREWALLFALCON - SSH Configuration for Termux
-# معدل ومحسن لدعم V2Ray/X-UI على Termux
+# معدل خصيصاً لـ Termux (بدون أخطاء)
 # ==================================================
 
 # الإعدادات الأساسية
 Port 8022
 Protocol 2
-KeyRegenerationInterval 3600
-ServerKeyBits 1024
 SyslogFacility AUTH
 LogLevel INFO
 
-# Host Keys (لـ Termux)
+# Host Keys
 HostKey /data/data/com.termux/files/usr/etc/ssh/ssh_host_ed25519_key
 HostKey /data/data/com.termux/files/usr/etc/ssh/ssh_host_rsa_key
 
@@ -23,14 +21,10 @@ PubkeyAuthentication yes
 PasswordAuthentication yes
 PermitEmptyPasswords no
 ChallengeResponseAuthentication no
-
-# إعدادات المصادقة القديمة (للتوافق)
-RSAAuthentication yes
 IgnoreRhosts yes
-RhostsRSAAuthentication no
 HostbasedAuthentication no
 
-# إعدادات البقاء متصلاً (مهم للـ VPN)
+# إعدادات البقاء متصلاً
 ClientAliveInterval 60
 ClientAliveCountMax 3
 TCPKeepAlive yes
@@ -47,23 +41,18 @@ GatewayPorts yes
 UseDNS no
 Compression yes
 
-# إعدادات X11 والبيئة
+# إعدادات X11
 X11Forwarding yes
 X11DisplayOffset 10
 PrintMotd no
-PrintLastLog yes
 
 # البيئة والمسارات
 AcceptEnv LANG LC_*
 Subsystem sftp /data/data/com.termux/files/usr/libexec/sftp-server
 
-# الشعار (اختياري - قم بإنشاء الملف إذا أردت)
+# الشعار (اختياري)
 # Banner /etc/bannerssh
 
-# استخدام PAM (مهم لـ Termux)
-UsePAM yes
-
 # ==================================================
-# نهاية ملف الإعدادات
-# تم التعديل والدمج لدعم V2Ray/X-UI على Termux
+# نهاية ملف الإعدادات المعدل لـ Termux
 # ==================================================
